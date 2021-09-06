@@ -1169,6 +1169,7 @@ mod tests {
 	struct TestCandidateBuilder {
 		para_id: ParaId,
 		head_data: HeadData,
+		para_head_hash: Option<Hash>,
 		pov_hash: Hash,
 		relay_parent: Hash,
 		persisted_validation_data_hash: Hash,
@@ -1186,6 +1187,7 @@ mod tests {
 					relay_parent: self.relay_parent,
 					persisted_validation_data_hash: self.persisted_validation_data_hash,
 					validation_code_hash: self.validation_code.hash(),
+					para_head: self.para_head_hash.unwrap_or_else(|| self.head_data.hash()),
 					..Default::default()
 				},
 				commitments: CandidateCommitments {
@@ -2189,6 +2191,40 @@ mod tests {
 					persisted_validation_data_hash: make_vdata_hash(chain_a).unwrap(),
 					hrmp_watermark: RELAY_PARENT_NUM,
 					validation_code: ValidationCode(vec![1]),
+					..Default::default()
+				}
+				.build();
+
+				collator_sign_candidate(Sr25519Keyring::One, &mut candidate);
+
+				let backed = block_on(back_candidate(
+					candidate,
+					&validators,
+					group_validators(GroupIndex::from(0)).unwrap().as_ref(),
+					&keystore,
+					&signing_context,
+					BackingKind::Threshold,
+				));
+
+				assert_eq!(
+					ParaInclusion::process_candidates(
+						Default::default(),
+						vec![backed],
+						vec![chain_a_assignment.clone()],
+						&group_validators,
+					),
+					Err(Error::<Test>::InvalidValidationCodeHash.into()),
+				);
+			}
+
+			// Para head hash in descriptor doesn't match head data
+			{
+				let mut candidate = TestCandidateBuilder {
+					para_id: chain_a,
+					relay_parent: System::parent_hash(),
+					pov_hash: Hash::repeat_byte(1),
+					persisted_validation_data_hash: make_vdata_hash(chain_a).unwrap(),
+					hrmp_watermark: RELAY_PARENT_NUM,
 					..Default::default()
 				}
 				.build();
